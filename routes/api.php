@@ -19,7 +19,9 @@ use App\http\Controllers\Api\TaskController;
 
 // tasks
 Route::get('/tasks', [TaskController::class, 'index']);
+Route::get('/tasks', [TaskController::class, 'index']);
 Route::get('/tasks/{id}', [TaskController::class, 'show']);
 Route::post('/tasks', [TaskController::class, 'store']);
 Route::put('/tasks/{id}', [TaskController::class, 'update']);
 Route::delete('/tasks/{id}', [TaskController::class, 'destroy']);
+Route::get('/user/tasks', [TaskController::class, 'getUserTasks']);

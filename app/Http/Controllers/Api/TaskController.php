@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Task;
+use App\Notifications\TaskCompleted;
+use App\Jobs\SendTaskCompletedEmail;
+use App\Events\TaskCreated;
 
 class TaskController extends Controller
 {
@@ -46,17 +49,31 @@ class TaskController extends Controller
             'title' => 'required|string|max:255',
             'category_id' => 'required|exists:categories,id',
             'user_id' => 'required|exists:users,id',
+            'attachment' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
         ]);
 
-        $task = Task::create([
-            'title' => $request->title,
-            'description' => $request->description,
-            'status' => $request->status ?? 'pending',
-            'category_id' => $request->category_id,
-            'user_id' => $request->user_id
-        ]);
+        try {
+            $filePath = null;
+            if ($request->hasFile('attachment')) {
+                $filePath = $request->file('attachment')->store('attachments', 'public');
+            }
 
-        return response()->json(['message' => 'Task created successfully!', 'task' => $task]);
+            $task = Task::create([
+                'title' => $request->title,
+                'description' => $request->description,
+                'status' => $request->status ?? 'pending',
+                'category_id' => $request->category_id,
+                'user_id' => $request->user_id,
+                'attachment' => $filePath
+            ]);
+
+            event(new TaskCreated($task));
+
+            return response()->json(['message' => 'Task created successfully!', 'task' => $task]);
+        } catch (\Exception $e) {
+            \Log::info($e->getMessage());
+            return response()->json(['error' => 'Task creation failed: ' . $e->getMessage()], 500);
+        }
     }
 
     public function update(Request $request, $id)
@@ -75,6 +92,10 @@ class TaskController extends Controller
 
         $task->update($request->only(['title', 'description', 'status', 'category_id']));
 
+        if ($task->wasChanged('status') && $task->status == 'completed') {
+            SendTaskCompletedEmail::dispatch($task);
+        }
+
         return response()->json(['message' => 'Task updated successfully!', 'task' => $task], 200);
     }
 
@@ -91,4 +112,23 @@ class TaskController extends Controller
         return response()->json(['message' => 'Task deleted successfully!'], 200);
     }
 
+    public function getUserTasks(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $tasks = Task::with('category')
+            ->where('user_id', $request->user_id)
+            ->get();
+
+        if ($tasks->isEmpty()) {
+            return response()->json(['error' => 'No tasks found for this user.'], 404);
+        }
+
+        return response()->json([
+            'message' => 'Tasks retrieved successfully!',
+            'data' => $tasks,
+        ], 200);
+    }
 }

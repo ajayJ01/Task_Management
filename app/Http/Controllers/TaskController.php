@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 use App\Models\Task;
 use App\Models\Category;
-
+use App\Events\TaskCreated;
 use Illuminate\Http\Request;
 
 class TaskController extends Controller
@@ -29,12 +29,15 @@ class TaskController extends Controller
         ]);
 
         try {
-            Task::create([
+            $task = Task::create([
                 'title' => $request->title,
                 'description' => $request->description,
                 'user_id' => auth()->id(),
                 'category_id' => $request->category_id,
             ]);
+
+
+            event(new TaskCreated($task));
 
             return redirect()->route('task.create')->with('success', 'Task created successfully!');
         } catch (\Exception $e) {
